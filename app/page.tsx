@@ -49,30 +49,110 @@ type OrderResponse = {
   message?: string
 }
 
+const CATEGORY_ORDER = [
+  "Rice Meals",
+  "Beverages",
+  "Snacks",
+  "Burgers",
+]
+
+
 function getFoodImage(foodName: string) {
-  const name = foodName.toLowerCase()
+  const name = foodName.toLowerCase().trim()
 
-  if (name.includes("chicken")) {
-    return "https://commons.wikimedia.org/wiki/Special:FilePath/Chicken%20inasal%20with%20rice.jpg"
+  // RICE MEALS
+  if (name.includes("chicken inasal")) {
+    return "/images/chicken-inasal.jpg"
   }
 
-  if (name.includes("pork") || name.includes("silog")) {
-    return "https://commons.wikimedia.org/wiki/Special:FilePath/Pork%20Silog%2C%20May%202025.jpg"
+  if (name.includes("chicken") && name.includes("rice")) {
+    return "/images/chicken-rice.jpg"
   }
 
-  if (name.includes("iced tea") || name.includes("tea")) {
-    return "https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&w=900&q=85"
+  if (name.includes("pork") && name.includes("silog")) {
+    return "/images/pork-silog.jpg"
+  }
+
+  if (name.includes("beef tapa")) {
+    return "/images/beef-tapa.jpg"
+  }
+
+  if (name.includes("tapa")) {
+    return "/images/beef-tapa.jpg"
+  }
+
+  // DRINKS
+  if (name.includes("iced tea")) {
+    return "/images/iced-tea.jpg"
+  }
+
+  if (name.includes("lemonade")) {
+    return "/images/lemonade.jpg"
+  }
+
+  if (name.includes("mango shake")) {
+    return "/images/mango-shake.jpg"
   }
 
   if (name.includes("water")) {
-    return "https://images.unsplash.com/photo-1523362628745-0c100150b504?auto=format&fit=crop&w=900&q=85"
+    return "/images/bottled-water.jpg"
   }
 
+  // SNACKS
   if (name.includes("fries")) {
-    return "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?auto=format&fit=crop&w=900&q=85"
+    return "/images/fries.jpg"
   }
 
-  return "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=900&q=85"
+  if (name.includes("nuggets")) {
+    return "/images/chicken-nuggets.jpg"
+  }
+
+  if (name.includes("nachos")) {
+    return "/images/nachos.jpg"
+  }
+
+  // BURGERS
+  if (name.includes("bacon")) {
+    return "/images/bacon-cheese-burger.jpg"
+  }
+
+  if (name.includes("chicken burger")) {
+    return "/images/chicken-burger.jpg"
+  }
+
+  if (name.includes("cheeseburger")) {
+    return "/images/cheeseburger.jpg"
+  }
+
+  if (name.includes("burger")) {
+    return "/images/cheeseburger.jpg"
+  }
+
+  // DEFAULT IMAGE
+  return "/images/food-placeholder.jpg"
+}
+
+
+function getCategoryGroups(items: FoodItem[]) {
+  const groups = new Map<string, FoodItem[]>()
+
+  for (const category of CATEGORY_ORDER) {
+    groups.set(category, [])
+  }
+
+  for (const item of items) {
+    const category = item.category_name || "Other Items"
+
+    if (!groups.has(category)) {
+      groups.set(category, [])
+    }
+
+    groups.get(category)!.push(item)
+  }
+
+  return Array.from(groups.entries()).filter(
+    ([, foods]) => foods.length > 0
+  )
 }
 
 export default function HomePage() {
@@ -109,11 +189,30 @@ export default function HomePage() {
 
     async function loadMenu() {
       try {
-        const data = await apiClient<FoodItem[]>("/food-item")
-        setMenuItems(data)
+        const data = await apiClient<FoodItem[]>("/food-item", {
+          requiresAuth: true,
+        })
+
+        const updatedMenu = data.map((item) => {
+          const foodName = item.food_name.toLowerCase().trim()
+
+          if (foodName === "bottled water") {
+            return { ...item, availability: "Available" }
+          }
+
+          if (foodName.includes("beef tapa")) {
+            return { ...item, availability: "Unavailable" }
+          }
+
+          return item
+        })
+
+        setMenuItems(updatedMenu)
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Unable to load menu."
+          err instanceof Error
+            ? err.message
+            : "Unable to load menu."
         )
       } finally {
         setLoading(false)
@@ -128,8 +227,10 @@ export default function HomePage() {
     setIsLoggedIn(false)
     setMenuItems([])
     setCart([])
+    setQuantities({})
     setError("")
     setMessage("")
+    setShowCheckout(false)
     router.replace("/login")
   }
 
@@ -144,11 +245,14 @@ export default function HomePage() {
   }
 
   function addToCart(item: FoodItem) {
+    if (item.availability !== "Available") return
+
     const selectedQuantity = quantities[item.food_item_id] || 1
 
     setCart((currentCart) => {
       const existing = currentCart.find(
-        (cartItem) => cartItem.food_item_id === item.food_item_id
+        (cartItem) =>
+          cartItem.food_item_id === item.food_item_id
       )
 
       if (existing) {
@@ -235,8 +339,8 @@ export default function HomePage() {
     let createdOrderId: number | null = null
 
     try {
-      // STEP 1: Create the order
       const order = await apiClient<OrderResponse>("/orders", {
+        requiresAuth: true,
         method: "POST",
         body: JSON.stringify({
           user_id: userId,
@@ -249,12 +353,14 @@ export default function HomePage() {
       createdOrderId = Number(order.order_id)
 
       if (!createdOrderId) {
-        throw new Error("The order was created but no order ID was returned.")
+        throw new Error(
+          "The order was created but no order ID was returned."
+        )
       }
 
-      // STEP 2: Save each item in the order
       for (const item of cart) {
         await apiClient("/order-detail", {
+          requiresAuth: true,
           method: "POST",
           body: JSON.stringify({
             order_id: createdOrderId,
@@ -264,8 +370,8 @@ export default function HomePage() {
         })
       }
 
-      // STEP 3: Save payment information
       await apiClient("/payment", {
+        requiresAuth: true,
         method: "POST",
         body: JSON.stringify({
           order_id: createdOrderId,
@@ -275,8 +381,8 @@ export default function HomePage() {
         }),
       })
 
-      // STEP 4: Save delivery information
       await apiClient("/delivery", {
+        requiresAuth: true,
         method: "POST",
         body: JSON.stringify({
           order_id: createdOrderId,
@@ -285,8 +391,8 @@ export default function HomePage() {
         }),
       })
 
-      // STEP 5: Show confirmation
       setCompletedOrderId(createdOrderId)
+
       setOrderSuccess(
         `Your order has been placed successfully! Order #${createdOrderId}`
       )
@@ -315,7 +421,6 @@ export default function HomePage() {
     }
   }
 
-  // Huwag ipakita ang homepage habang hindi pa verified ang login.
   if (authChecking || !isLoggedIn) {
     return <main className="min-h-screen bg-[#f8f4ec]" />
   }
@@ -323,10 +428,10 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-[#f8f4ec] text-[#39291f]">
 
+
       {/* HEADER */}
       <header className="sticky top-0 z-30 border-b border-[#e9dfd0] bg-[#faf8f2]/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 md:px-8">
-
           <Link href="/" className="flex items-center gap-3">
             <div className="flex size-11 items-center justify-center rounded-full bg-[#493326] text-[#f8edda]">
               <UtensilsCrossed className="size-5" />
@@ -392,7 +497,6 @@ export default function HomePage() {
       {/* HERO */}
       <section className="relative overflow-hidden bg-[#e9dfd0]">
         <div className="mx-auto grid max-w-7xl items-center gap-10 px-5 py-16 md:grid-cols-2 md:px-8 md:py-24">
-
           <div className="relative z-10">
             <div className="mb-6 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.25em] text-[#98734f]">
               <span className="h-px w-9 bg-[#98734f]" />
@@ -495,7 +599,6 @@ export default function HomePage() {
       {/* ABOUT STRIP */}
       <section id="about" className="border-b border-[#e9dfd0] bg-[#faf8f2]">
         <div className="mx-auto grid max-w-7xl gap-8 px-5 py-9 sm:grid-cols-3 md:px-8">
-
           <div className="flex items-center justify-center gap-3">
             <Star className="size-6 text-[#a4774e]" />
             <div>
@@ -531,9 +634,9 @@ export default function HomePage() {
               </p>
             </div>
           </div>
-
         </div>
       </section>
+
 
       {/* MENU */}
       <section
@@ -585,100 +688,134 @@ export default function HomePage() {
         )}
 
         {!loading && !error && menuItems.length > 0 && (
-          <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-16">
+            {getCategoryGroups(menuItems).map(([category, foods]) => (
+              <div key={category}>
+                <div className="mb-7 flex items-center gap-4">
+                  <div className="h-px flex-1 bg-[#d9c7b1]" />
 
-            {menuItems.map((item) => (
-              <Card
-                key={item.food_item_id}
-                className="group overflow-hidden rounded-2xl border border-[#e9dfd0] bg-[#fffdf8] shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
-              >
-                <CardContent className="p-0">
+                  <h3 className="font-serif text-3xl text-[#493326] md:text-4xl">
+                    {category}
+                  </h3>
 
-                  <div className="relative h-56 overflow-hidden bg-[#e9dfd0]">
-                    <img
-                      src={getFoodImage(item.food_name)}
-                      alt={item.food_name}
-                      loading="lazy"
-                      className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
-                    />
+                  <div className="h-px flex-1 bg-[#d9c7b1]" />
+                </div>
 
-                    <span className="absolute left-4 top-4 rounded-full bg-[#faf8f2]/95 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#634832] shadow-sm">
-                      {item.category_name || "Our Selection"}
-                    </span>
-                  </div>
+                <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+                  {foods.map((item) => {
+                    const isAvailable =
+                      item.availability === "Available"
 
-                  <div className="p-6">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-serif text-2xl text-[#493326]">
-                          {item.food_name}
-                        </h3>
-
-                        <p className="mt-2 min-h-12 text-sm leading-6 text-[#887565]">
-                          {item.description || "A delicious favorite from Constantino Food House."}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 flex items-center justify-between border-t border-[#eee5d9] pt-5">
-                      <span className="font-serif text-2xl font-bold text-[#795638]">
-                        ₱{Number(item.price).toFixed(2)}
-                      </span>
-
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          item.availability === "Available"
-                            ? "bg-[#e8eee2] text-[#526d45]"
-                            : "bg-[#eee8e2] text-[#847365]"
-                        }`}
+                    return (
+                      <Card
+                        key={item.food_item_id}
+                        className="group overflow-hidden rounded-2xl border border-[#e9dfd0] bg-[#fffdf8] shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
                       >
-                        {item.availability}
-                      </span>
-                    </div>
+                        <CardContent className="p-0">
+                          <div className="relative h-56 overflow-hidden bg-[#e9dfd0]">
+                            <img
+                              src={getFoodImage(item.food_name)}
+                              alt={item.food_name}
+                              loading="lazy"
+                              className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
+                            />
 
-                    <div className="mt-5 flex items-center gap-3">
-                      <div className="flex h-11 items-center overflow-hidden rounded-full border border-[#d9c7b1]">
-                        <button
-                          type="button"
-                          aria-label="Decrease quantity"
-                          disabled={(quantities[item.food_item_id] || 1) <= 1}
-                          className="flex h-full w-9 items-center justify-center text-[#634832] hover:bg-[#eee4d6] disabled:opacity-40"
-                          onClick={() => changeMenuQuantity(item.food_item_id, -1)}
-                        >
-                          <Minus className="size-4" />
-                        </button>
+                            <span className="absolute left-4 top-4 rounded-full bg-[#faf8f2]/95 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[#634832] shadow-sm">
+                              {category}
+                            </span>
+                          </div>
 
-                        <span className="flex h-full min-w-9 items-center justify-center border-x border-[#e9dfd0] text-sm font-bold text-[#493326]">
-                          {quantities[item.food_item_id] || 1}
-                        </span>
+                          <div className="p-6">
+                            <h4 className="font-serif text-2xl text-[#493326]">
+                              {item.food_name}
+                            </h4>
 
-                        <button
-                          type="button"
-                          aria-label="Increase quantity"
-                          className="flex h-full w-9 items-center justify-center text-[#634832] hover:bg-[#eee4d6]"
-                          onClick={() => changeMenuQuantity(item.food_item_id, 1)}
-                        >
-                          <Plus className="size-4" />
-                        </button>
-                      </div>
+                            <p className="mt-2 min-h-12 text-sm leading-6 text-[#887565]">
+                              {item.description ||
+                                "A delicious favorite from Constantino Food House."}
+                            </p>
 
-                      <Button
-                        className="h-11 flex-1 rounded-full bg-[#493326] text-xs font-semibold text-white hover:bg-[#634832]"
-                        disabled={item.availability !== "Available"}
-                        onClick={() => addToCart(item)}
-                      >
-                        <ShoppingBag className="mr-2 size-4" />
-                        Add to Cart
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                            <div className="mt-5 flex items-center justify-between border-t border-[#eee5d9] pt-5">
+                              <span className="font-serif text-2xl font-bold text-[#795638]">
+                                ₱{Number(item.price).toFixed(2)}
+                              </span>
+
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                  isAvailable
+                                    ? "bg-[#e8eee2] text-[#526d45]"
+                                    : "bg-[#eee8e2] text-[#847365]"
+                                }`}
+                              >
+                                {item.availability}
+                              </span>
+                            </div>
+
+                            <div className="mt-5 flex items-center gap-3">
+                              <div
+                                className={`flex h-11 items-center overflow-hidden rounded-full border border-[#d9c7b1] ${
+                                  !isAvailable ? "opacity-50" : ""
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  aria-label={`Decrease ${item.food_name} quantity`}
+                                  disabled={
+                                    !isAvailable ||
+                                    (quantities[item.food_item_id] || 1) <= 1
+                                  }
+                                  className="flex h-full w-9 items-center justify-center text-[#634832] hover:bg-[#eee4d6] disabled:cursor-not-allowed disabled:opacity-40"
+                                  onClick={() =>
+                                    changeMenuQuantity(item.food_item_id, -1)
+                                  }
+                                >
+                                  <Minus className="size-4" />
+                                </button>
+
+                                <span className="flex h-full min-w-9 items-center justify-center border-x border-[#e9dfd0] text-sm font-bold text-[#493326]">
+                                  {quantities[item.food_item_id] || 1}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  aria-label={`Increase ${item.food_name} quantity`}
+                                  disabled={!isAvailable}
+                                  className="flex h-full w-9 items-center justify-center text-[#634832] hover:bg-[#eee4d6] disabled:cursor-not-allowed disabled:opacity-40"
+                                  onClick={() =>
+                                    changeMenuQuantity(item.food_item_id, 1)
+                                  }
+                                >
+                                  <Plus className="size-4" />
+                                </button>
+                              </div>
+
+                              <Button
+                                className={`h-11 flex-1 rounded-full text-xs font-semibold ${
+                                  isAvailable
+                                    ? "bg-[#493326] text-white hover:bg-[#634832]"
+                                    : "cursor-not-allowed bg-gray-300 text-gray-600"
+                                }`}
+                                disabled={!isAvailable}
+                                onClick={() => addToCart(item)}
+                              >
+                                <ShoppingBag className="mr-2 size-4" />
+                                {isAvailable
+                                  ? "Add to Cart"
+                                  : "Unavailable"}
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              </div>
             ))}
-
           </div>
         )}
       </section>
+
 
       {/* CART */}
       <section
@@ -686,7 +823,6 @@ export default function HomePage() {
         className="scroll-mt-24 bg-[#e9dfd0] px-5 py-20 md:px-8"
       >
         <div className="mx-auto max-w-4xl">
-
           <div className="mb-9 text-center">
             <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#98734f]">
               Your favorites
@@ -699,7 +835,6 @@ export default function HomePage() {
 
           <Card className="overflow-hidden rounded-3xl border border-[#e4d6c4] bg-[#fffdf8] shadow-lg">
             <CardContent className="p-6 md:p-9">
-
               <div className="flex items-center justify-between border-b border-[#eee5d9] pb-5">
                 <div>
                   <h3 className="font-serif text-2xl text-[#493326]">
@@ -726,17 +861,19 @@ export default function HomePage() {
                     <CheckCircle2 className="size-5" />
                     Order placed successfully!
                   </div>
-                  <p className="mt-2 text-sm">
-                    {orderSuccess}
-                  </p>
+
+                  <p className="mt-2 text-sm">{orderSuccess}</p>
+
                   {completedOrderId && (
                     <p className="mt-2 text-sm font-bold">
                       Order Number: #{completedOrderId}
                     </p>
                   )}
+
                   <p className="mt-2 text-xs">
                     Payment status: Pending
                   </p>
+
                   <Link
                     href="/my-orders"
                     className="mt-4 inline-flex items-center gap-2 text-sm font-bold underline"
@@ -769,7 +906,6 @@ export default function HomePage() {
                 </div>
               ) : (
                 <div className="mt-6 space-y-6">
-
                   {cart.map((item) => (
                     <div
                       key={item.food_item_id}
@@ -798,7 +934,9 @@ export default function HomePage() {
                           type="button"
                           aria-label="Decrease cart quantity"
                           className="flex size-9 items-center justify-center rounded-full border border-[#d9c7b1] text-[#634832] hover:bg-[#eee4d6]"
-                          onClick={() => changeCartQuantity(item.food_item_id, -1)}
+                          onClick={() =>
+                            changeCartQuantity(item.food_item_id, -1)
+                          }
                         >
                           <Minus className="size-4" />
                         </button>
@@ -811,20 +949,26 @@ export default function HomePage() {
                           type="button"
                           aria-label="Increase cart quantity"
                           className="flex size-9 items-center justify-center rounded-full border border-[#d9c7b1] text-[#634832] hover:bg-[#eee4d6]"
-                          onClick={() => changeCartQuantity(item.food_item_id, 1)}
+                          onClick={() =>
+                            changeCartQuantity(item.food_item_id, 1)
+                          }
                         >
                           <Plus className="size-4" />
                         </button>
 
                         <span className="w-24 text-right font-bold text-[#795638]">
-                          ₱{(Number(item.price) * item.quantity).toFixed(2)}
+                          ₱{(
+                            Number(item.price) * item.quantity
+                          ).toFixed(2)}
                         </span>
 
                         <button
                           type="button"
                           aria-label="Remove item"
                           className="flex size-9 items-center justify-center rounded-full text-[#a45b4b] hover:bg-[#f8eae5]"
-                          onClick={() => removeFromCart(item.food_item_id)}
+                          onClick={() =>
+                            removeFromCart(item.food_item_id)
+                          }
                         >
                           <Trash2 className="size-4" />
                         </button>
@@ -861,6 +1005,7 @@ export default function HomePage() {
                         <h3 className="font-serif text-2xl text-[#493326]">
                           Checkout Details
                         </h3>
+
                         <p className="mt-1 text-sm text-[#927b66]">
                           Enter your delivery information to complete your order.
                         </p>
@@ -871,9 +1016,12 @@ export default function HomePage() {
                           <MapPin className="size-4" />
                           Delivery Address
                         </label>
+
                         <textarea
                           value={deliveryAddress}
-                          onChange={(event) => setDeliveryAddress(event.target.value)}
+                          onChange={(event) =>
+                            setDeliveryAddress(event.target.value)
+                          }
                           placeholder="Enter your complete delivery address"
                           rows={3}
                           disabled={isCheckingOut}
@@ -901,6 +1049,7 @@ export default function HomePage() {
                             <p className="font-semibold text-[#493326]">
                               Cash on Delivery
                             </p>
+
                             <p className="mt-1 text-xs text-[#927b66]">
                               Pay when your order arrives
                             </p>
@@ -919,6 +1068,7 @@ export default function HomePage() {
                             <p className="font-semibold text-[#493326]">
                               GCash
                             </p>
+
                             <p className="mt-1 text-xs text-[#927b66]">
                               Recorded as pending payment
                             </p>
@@ -929,14 +1079,19 @@ export default function HomePage() {
                       <div className="rounded-xl bg-[#eee4d6] p-4">
                         <div className="flex justify-between text-sm text-[#766252]">
                           <span>Payment Method</span>
+
                           <span className="font-semibold text-[#493326]">
-                            {paymentMethod === "Cash" ? "Cash on Delivery" : "GCash"}
+                            {paymentMethod === "Cash"
+                              ? "Cash on Delivery"
+                              : "GCash"}
                           </span>
                         </div>
+
                         <div className="mt-3 flex justify-between">
                           <span className="font-semibold text-[#493326]">
                             Total to Pay
                           </span>
+
                           <span className="font-serif text-2xl font-bold text-[#493326]">
                             ₱{cartTotal.toFixed(2)}
                           </span>
@@ -988,10 +1143,8 @@ export default function HomePage() {
                   <p className="text-center text-xs text-[#927b66]">
                     Please review your order before placing it.
                   </p>
-
                 </div>
               )}
-
             </CardContent>
           </Card>
         </div>

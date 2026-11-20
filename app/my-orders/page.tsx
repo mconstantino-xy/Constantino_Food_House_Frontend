@@ -61,78 +61,94 @@ export default function MyOrdersPage() {
   const [detailLoading, setDetailLoading] = useState<number | null>(null)
   const [detailErrors, setDetailErrors] = useState<Record<number, string>>({})
 
-  async function loadOrders() {
-    setLoading(true)
-    setError("")
+ 
+async function loadOrders() {
+  setLoading(true)
+  setError("")
 
-    try {
-      if (!isAuthenticated()) {
-        window.location.href = "/login"
-        return
-      }
-
-      const userId = getCurrentUserId()
-
-      if (!userId) {
-        throw new Error("Unable to identify your account. Please log in again.")
-      }
-
-      const data = await apiClient<Order[]>(`/orders/user/${userId}`)
-      setOrders(Array.isArray(data) ? data : [])
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to load your orders."
-      )
-    } finally {
-      setLoading(false)
+  try {
+    if (!isAuthenticated()) {
+      window.location.href = "/login"
+      return
     }
-  }
 
-  useEffect(() => {
-    loadOrders()
-  }, [])
+    const userId = getCurrentUserId()
 
-  async function loadOrderDetails(orderId: number) {
-    setDetailLoading(orderId)
-    setDetailErrors((previous) => ({ ...previous, [orderId]: "" }))
-
-    try {
-      const [detailData, paymentData, deliveryData] = await Promise.all([
-        apiClient<OrderDetail[]>(`/order-detail/order/${orderId}`),
-        apiClient<Payment[]>("/payment"),
-        apiClient<Delivery[]>("/delivery"),
-      ])
-
-      setDetails((previous) => ({
-        ...previous,
-        [orderId]: Array.isArray(detailData) ? detailData : [],
-      }))
-
-      setPayments((previous) => ({
-        ...previous,
-        [orderId]: Array.isArray(paymentData)
-          ? paymentData.find((item) => Number(item.order_id) === orderId) || null
-          : null,
-      }))
-
-      setDeliveries((previous) => ({
-        ...previous,
-        [orderId]: Array.isArray(deliveryData)
-          ? deliveryData.find((item) => Number(item.order_id) === orderId) || null
-          : null,
-      }))
-    } catch (err) {
-      setDetailErrors((previous) => ({
-        ...previous,
-        [orderId]:
-          err instanceof Error
-            ? err.message
-            : "Unable to load order details.",
-      }))
-    } finally {
-      setDetailLoading(null)
+    if (!userId) {
+      throw new Error("Unable to identify your account. Please log in again.")
     }
+
+    const data = await apiClient<Order[]>(
+      `/orders/user/${userId}`,
+      { requiresAuth: true }
+    )
+
+    setOrders(Array.isArray(data) ? data : [])
+  } catch (err) {
+    setError(
+      err instanceof Error ? err.message : "Unable to load your orders."
+    )
+  } finally {
+    setLoading(false)
   }
+}
+
+useEffect(() => {
+  loadOrders()
+}, [])
+
+async function loadOrderDetails(orderId: number) {
+  setDetailLoading(orderId)
+  setDetailErrors((previous) => ({ ...previous, [orderId]: "" }))
+
+  try {
+    const [detailData, paymentData, deliveryData] = await Promise.all([
+      apiClient<OrderDetail[]>(
+        `/order-detail/order/${orderId}`,
+        { requiresAuth: true }
+      ),
+      apiClient<Payment>(
+        "/payment",
+        { requiresAuth: true }
+      ),
+      apiClient<Delivery[]>(
+        "/delivery",
+        { requiresAuth: true }
+      ),
+    ])
+
+    setDetails((previous) => ({
+      ...previous,
+      [orderId]: Array.isArray(detailData) ? detailData : [],
+    }))
+
+    setPayments((previous) => ({
+      ...previous,
+      [orderId]: Array.isArray(paymentData)
+        ? paymentData.find((item) => Number(item.order_id) === orderId) || null
+        : null,
+    }))
+
+    setDeliveries((previous) => ({
+      ...previous,
+      [orderId]: Array.isArray(deliveryData)
+        ? deliveryData.find((item) => Number(item.order_id) === orderId) || null
+        : null,
+    }))
+  } catch (err) {
+    setDetailErrors((previous) => ({
+      ...previous,
+      [orderId]:
+        err instanceof Error
+          ? err.message
+          : "Unable to load order details.",
+    }))
+  } finally {
+    setDetailLoading(null)
+  }
+}
+
+
 
   async function toggleDetails(orderId: number) {
     if (expandedOrder === orderId) {

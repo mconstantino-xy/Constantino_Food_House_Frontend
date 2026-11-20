@@ -1,40 +1,67 @@
 
-import { CONFIG } from "./config"
-import { getAccessToken } from "./auth"
+import { CONFIG } from "./config";
+import { clearTokens, getAccessToken } from "./auth";
+
+interface FetchOptions extends RequestInit {
+  requiresAuth?: boolean;
+}
 
 export async function apiClient<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: FetchOptions = {}
 ): Promise<T> {
-  const token = getAccessToken()
+  const { requiresAuth = false, headers, ...restOptions } = options;
 
-  const headers = new Headers(options.headers)
+  const requestHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(headers as Record<string, string> || {}),
+  };
 
-  if (!headers.has("Content-Type") && options.body) {
-    headers.set("Content-Type", "application/json")
+  if (requiresAuth) {
+    const token = getAccessToken();
+
+    if (token) {
+      requestHeaders["Authorization"] = `Bearer ${token}`;
+    }
   }
-
- if (token) {
-  headers.set("Authorization", `Bearer ${token.trim()}`)
-}
 
   const response = await fetch(
     `${CONFIG.API_BASE_URL}${endpoint}`,
     {
-      ...options,
-      headers,
+      ...restOptions,
+      headers: requestHeaders,
     }
-  )
+  );
 
-  const data = await response.json().catch(() => null)
+  if (response.status === 401 && requiresAuth) {
+    clearTokens();
 
-  if (!response.ok) {
-    throw new Error(
-      data?.message ||
-      data?.error ||
-      `Request failed with status ${response.status}`
-    )
+    if (typeof window !== "undefined") {
+      window.location.href = CONFIG.ROUTES.LOGIN;
+    }
+
+    throw new Error("Session expired. Please log in again.");
   }
 
-  return data as T
+  const responseText = await response.text();
+
+  let data: any = {};
+
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    throw new Error(
+      `Server returned an invalid response (${response.status}). Check your API URL: ${CONFIG.API_BASE_URL}${endpoint}`
+    );
+  }
+
+  if (!response.ok) {
+    const errorMessage = Array.isArray(data.message)
+      ? data.message.join(", ")
+      : data.message || "An unexpected error occurred.";
+
+    throw new Error(errorMessage);
+  }
+
+  return data as T;
 }

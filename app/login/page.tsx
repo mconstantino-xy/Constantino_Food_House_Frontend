@@ -10,9 +10,11 @@ import {
   EyeOff,
   ArrowRight,
   Loader2,
+  ShieldCheck,
+  ShoppingBag,
 } from "lucide-react"
 import { apiClient } from "@/lib/api"
-import { setTokens } from "@/lib/auth"
+import { setTokens, getCurrentUserRole } from "@/lib/auth"
 
 type LoginResponse = {
   accessToken?: string
@@ -21,11 +23,14 @@ type LoginResponse = {
   refresh_token?: string
 }
 
+type LoginMode = "admin" | "customer"
+
 export default function LoginPage() {
   const router = useRouter()
 
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
+  const [loginMode, setLoginMode] = useState<LoginMode>("customer")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
@@ -49,12 +54,37 @@ export default function LoginPage() {
       }
 
       setTokens(accessToken, refreshToken)
-      router.replace("/")
+
+      const role = getCurrentUserRole()
+
+      if (!role) {
+        throw new Error("Unable to verify your account role. Please contact the administrator.")
+      }
+
+      if (loginMode === "admin" && role !== "admin") {
+        throw new Error("Access denied. Only authorized admin accounts can log in as Admin.")
+      }
+
+      if (loginMode === "admin") {
+        router.replace("/food-management")
+      } else {
+        router.replace("/dashboard")
+      }
+
       router.refresh()
     } catch (err) {
-      setError(
+      const message =
         err instanceof Error ? err.message : "Unable to log in."
-      )
+
+      setError(message)
+
+      if (
+        message.includes("Access denied") ||
+        message.includes("Unable to verify")
+      ) {
+        const { clearTokens } = await import("@/lib/auth")
+        clearTokens()
+      }
     } finally {
       setLoading(false)
     }
@@ -62,7 +92,6 @@ export default function LoginPage() {
 
   return (
     <main className="grid min-h-screen bg-[#f8f4ec] lg:grid-cols-2">
-
       <section className="flex items-center justify-center px-6 py-12 sm:px-12">
         <div className="w-full max-w-md">
 
@@ -89,11 +118,50 @@ export default function LoginPage() {
           </h2>
 
           <p className="mt-4 text-sm leading-7 text-[#887565]">
-            Welcome back! Sign in to explore our delicious meals
-            and order your favorites.
+            Choose how you want to access Constantino Food House.
           </p>
 
-          <form onSubmit={handleLogin} className="mt-10 space-y-6">
+          <form onSubmit={handleLogin} className="mt-8 space-y-6">
+
+            <div>
+              <label className="mb-3 block text-sm font-semibold text-[#493326]">
+                Login As
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginMode("customer")
+                    setError("")
+                  }}
+                  className={`flex flex-col items-center gap-2 rounded-xl border p-4 transition ${
+                    loginMode === "customer"
+                      ? "border-[#795638] bg-[#eee4d6] text-[#493326] ring-2 ring-[#795638]/20"
+                      : "border-[#ddcdbb] bg-[#fffdf8] text-[#887565]"
+                  }`}
+                >
+                  <ShoppingBag className="size-6" />
+                  <span className="text-sm font-bold">Customer</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginMode("admin")
+                    setError("")
+                  }}
+                  className={`flex flex-col items-center gap-2 rounded-xl border p-4 transition ${
+                    loginMode === "admin"
+                      ? "border-[#795638] bg-[#eee4d6] text-[#493326] ring-2 ring-[#795638]/20"
+                      : "border-[#ddcdbb] bg-[#fffdf8] text-[#887565]"
+                  }`}
+                >
+                  <ShieldCheck className="size-6" />
+                  <span className="text-sm font-bold">Admin</span>
+                </button>
+              </div>
+            </div>
 
             <div>
               <label className="mb-2 block text-sm font-semibold text-[#493326]">
@@ -170,7 +238,7 @@ export default function LoginPage() {
               href="/register"
               className="font-bold text-[#795638] hover:underline"
             >
-              Create an account
+              Create a customer account
             </Link>
           </p>
 
