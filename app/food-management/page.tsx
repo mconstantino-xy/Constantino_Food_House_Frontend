@@ -66,7 +66,13 @@ const categories = [
   { id: 3, name: "Snacks" },
 ];
 
-const orderStatuses = ["Pending", "Preparing", "Completed"];
+const orderStatuses = [
+  "Pending",
+  "Preparing",
+  "Out for Delivery",
+  "Delivered",
+  "Cancelled",
+];
 
 export default function FoodManagementPage() {
   const router = useRouter();
@@ -390,6 +396,57 @@ export default function FoodManagementPage() {
 
     return parsedDate.toLocaleString();
   };
+
+  // =========================
+  // ORDER STATUS COLORS
+  // =========================
+
+  const getOrderStatusColor = (status: string) => {
+    switch (status) {
+      case "Pending":
+        return "bg-yellow-100 text-yellow-800";
+
+      case "Preparing":
+        return "bg-blue-100 text-blue-800";
+
+      case "Out for Delivery":
+        return "bg-orange-100 text-orange-800";
+
+      case "Delivered":
+      case "Completed":
+        return "bg-green-100 text-green-800";
+
+      case "Cancelled":
+        return "bg-red-100 text-red-800";
+
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
+  };
+
+  function getStatusColor(order_status: string) {
+    switch (order_status.trim().toLowerCase()) {
+      case "pending":
+        return "bg-yellow-100 text-yellow-800";
+
+      case "preparing":
+        return "bg-blue-100 text-blue-800";
+
+      case "out for delivery":
+        return "bg-orange-100 text-orange-800";
+
+      case "delivered":
+      case "completed":
+        return "bg-green-100 text-green-800";
+
+      case "cancelled":
+      case "canceled":
+        return "bg-red-100 text-red-800";
+
+      default:
+        return "bg-gray-100 text-gray-700";
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[#E9DECE] px-4 py-10 text-[#4B3023]">
@@ -761,15 +818,9 @@ export default function FoodManagementPage() {
                     </div>
 
                     <span
-                      className={`rounded-full px-4 py-2 text-xs font-bold ${
-                        order.order_status === "Pending"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : order.order_status === "Preparing"
-                            ? "bg-blue-100 text-blue-800"
-                            : order.order_status === "Completed"
-                              ? "bg-green-100 text-green-800"
-                              : "bg-gray-100 text-gray-700"
-                      }`}
+                     className={`rounded-full px-4 py-2 text-xs font-bold ${getStatusColor(
+                        order.order_status
+                      )}`}
                     >
                       {order.order_status}
                     </span>
@@ -814,9 +865,15 @@ export default function FoodManagementPage() {
                           <thead className="bg-[#E9DECE]">
                             <tr>
                               <th className="px-3 py-2">Food Name</th>
-                              <th className="px-3 py-2 text-center">Quantity</th>
-                              <th className="px-3 py-2 text-right">Price</th>
-                              <th className="px-3 py-2 text-right">Subtotal</th>
+                              <th className="px-3 py-2 text-center">
+                                Quantity
+                              </th>
+                              <th className="px-3 py-2 text-right">
+                                Price
+                              </th>
+                              <th className="px-3 py-2 text-right">
+                                Subtotal
+                              </th>
                             </tr>
                           </thead>
 
@@ -827,7 +884,8 @@ export default function FoodManagementPage() {
                                 className="border-b border-[#E9DECE]"
                               >
                                 <td className="px-3 py-3 font-semibold">
-                                  {detail.food_name || `Food #${detail.food_item_id}`}
+                                  {detail.food_name ||
+                                    `Food #${detail.food_item_id}`}
                                 </td>
 
                                 <td className="px-3 py-3 text-center">

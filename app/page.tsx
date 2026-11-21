@@ -169,6 +169,7 @@ export default function HomePage() {
 
   const [showCheckout, setShowCheckout] = useState(false)
   const [deliveryAddress, setDeliveryAddress] = useState("")
+  const [deliveryContact, setDeliveryContact] = useState("")
   const [paymentMethod, setPaymentMethod] = useState("Cash")
   const [isCheckingOut, setIsCheckingOut] = useState(false)
   const [checkoutError, setCheckoutError] = useState("")
@@ -187,37 +188,26 @@ export default function HomePage() {
       return
     }
 
-    async function loadMenu() {
-      try {
-        const data = await apiClient<FoodItem[]>("/food-item", {
-          requiresAuth: true,
-        })
+    
+async function loadMenu() {
+  try {
+    const data = await apiClient<FoodItem[]>("/food-item", {
+      requiresAuth: true,
+    })
 
-        const updatedMenu = data.map((item) => {
-          const foodName = item.food_name.toLowerCase().trim()
-
-          if (foodName === "bottled water") {
-            return { ...item, availability: "Available" }
-          }
-
-          if (foodName.includes("beef tapa")) {
-            return { ...item, availability: "Unavailable" }
-          }
-
-          return item
-        })
-
-        setMenuItems(updatedMenu)
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load menu."
-        )
-      } finally {
-        setLoading(false)
-      }
-    }
+    // Gamitin ang actual availability ng lahat ng food items
+    // mula sa database. Walang hard-coded overrides.
+    setMenuItems(data)
+  } catch (err) {
+    setError(
+      err instanceof Error
+        ? err.message
+        : "Unable to load menu."
+    )
+  } finally {
+    setLoading(false)
+  }
+}
 
     loadMenu()
   }, [router])
@@ -319,11 +309,15 @@ export default function HomePage() {
       setCheckoutError("Your cart is empty.")
       return
     }
+if (!deliveryContact.trim()) {
+  setCheckoutError("Please enter your contact number.")
+  return
+}
 
-    if (!deliveryAddress.trim()) {
-      setCheckoutError("Please enter your delivery address.")
-      return
-    }
+if (!deliveryAddress.trim()) {
+  setCheckoutError("Please enter your delivery address.")
+  return
+}
 
     const userId = getCurrentUserId()
 
@@ -382,14 +376,14 @@ export default function HomePage() {
       })
 
       await apiClient("/delivery", {
-        requiresAuth: true,
-        method: "POST",
-        body: JSON.stringify({
-          order_id: createdOrderId,
-          delivery_address: deliveryAddress.trim(),
-          delivery_status: "Pending",
-        }),
-      })
+  requiresAuth: true,
+  method: "POST",
+  body: JSON.stringify({
+    order_id: createdOrderId,
+    delivery_contact: deliveryContact.trim(),
+    delivery_address: deliveryAddress.trim(),
+  }),
+})
 
       setCompletedOrderId(createdOrderId)
 
@@ -400,6 +394,7 @@ export default function HomePage() {
       setCart([])
       setQuantities({})
       setDeliveryAddress("")
+      setDeliveryContact("")
       setPaymentMethod("Cash")
       setShowCheckout(false)
       setMessage("")
@@ -704,7 +699,7 @@ export default function HomePage() {
                 <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
                   {foods.map((item) => {
                     const isAvailable =
-                      item.availability === "Available"
+                       item.availability?.trim().toLowerCase() === "available"
 
                     return (
                       <Card
@@ -789,20 +784,20 @@ export default function HomePage() {
                                 </button>
                               </div>
 
-                              <Button
-                                className={`h-11 flex-1 rounded-full text-xs font-semibold ${
-                                  isAvailable
-                                    ? "bg-[#493326] text-white hover:bg-[#634832]"
-                                    : "cursor-not-allowed bg-gray-300 text-gray-600"
-                                }`}
-                                disabled={!isAvailable}
-                                onClick={() => addToCart(item)}
-                              >
-                                <ShoppingBag className="mr-2 size-4" />
-                                {isAvailable
-                                  ? "Add to Cart"
-                                  : "Unavailable"}
-                              </Button>
+                             
+<Button
+  className={`h-11 flex-1 rounded-full text-xs font-semibold ${
+    isAvailable
+      ? "bg-[#493326] text-white hover:bg-[#634832]"
+      : "cursor-not-allowed bg-red-600 text-white opacity-100"
+  }`}
+  disabled={!isAvailable}
+  onClick={() => addToCart(item)}
+>
+  <ShoppingBag className="mr-2 size-4" />
+  {isAvailable ? "Add to Cart" : "Unavailable"}
+</Button>
+
                             </div>
                           </div>
                         </CardContent>
@@ -1028,6 +1023,23 @@ export default function HomePage() {
                           className="w-full resize-none rounded-xl border border-[#d9c7b1] bg-white px-4 py-3 text-sm text-[#493326] outline-none placeholder:text-[#a99683] focus:border-[#98734f]"
                         />
                       </div>
+
+
+<div>
+  <label className="mb-2 block text-sm font-semibold text-[#634832]">
+    Contact Number
+  </label>
+
+  <input
+    type="tel"
+    value={deliveryContact}
+    onChange={(e) => setDeliveryContact(e.target.value)}
+    placeholder="Enter your contact number"
+    disabled={isCheckingOut}
+    className="w-full rounded-xl border border-[#d9c7b1] bg-white px-4 py-3 text-sm text-[#493326] outline-none transition focus:border-[#493326]"
+  />
+</div>
+
 
                       <div>
                         <label className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#634832]">
